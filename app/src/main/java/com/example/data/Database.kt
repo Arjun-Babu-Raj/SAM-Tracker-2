@@ -84,9 +84,9 @@ data class LongitudinalFollowup(
     val studyId: String,
     val followupRound: String, // 'M9', 'M12', or 'M15'
     val currentStatus: String, // 'Alive' or 'Dead'
-    val weight: Double,
-    val height: Double,
-    val whz: Double,
+    val weight: Double? = null,
+    val height: Double? = null,
+    val whz: Double? = null,
     val thrReceived: String,
     val thrConsumedDays7d: Int,
     val dietaryScore24h: Int,
@@ -110,6 +110,12 @@ interface SamDao {
     @Upsert
     suspend fun insertChild(child: Child)
 
+    @Query("SELECT * FROM children WHERE studyId = :studyId LIMIT 1")
+    suspend fun getChildByStudyId(studyId: String): Child?
+
+    @Query("SELECT * FROM children WHERE csamId = :csamId LIMIT 1")
+    suspend fun getChildByCsamId(csamId: String): Child?
+
     @Upsert
     suspend fun insertBaseline(baseline: BaselineAssessment)
 
@@ -120,7 +126,14 @@ interface SamDao {
         insertBaseline(baseline)
     }
 
-    @Query("SELECT * FROM children WHERE studyId = :query OR csamId = :query OR childName LIKE '%' || :query || '%' LIMIT 1")
+    // Exact match on studyId or csamId first, then exact name, then prefix/contains
+    @Query("SELECT * FROM children WHERE studyId = :query OR csamId = :query LIMIT 1")
+    suspend fun getChildByExactStudyOrCsamId(query: String): Child?
+
+    @Query("SELECT * FROM children WHERE childName = :query COLLATE NOCASE LIMIT 1")
+    suspend fun getChildByExactName(query: String): Child?
+
+    @Query("SELECT * FROM children WHERE studyId = :query OR csamId = :query OR childName LIKE '%' || :query || '%' ORDER BY CASE WHEN studyId = :query THEN 1 WHEN csamId = :query THEN 2 WHEN childName = :query COLLATE NOCASE THEN 3 ELSE 4 END LIMIT 1")
     suspend fun getChildByStudyOrCsamId(query: String): Child?
 
     @Query("SELECT * FROM children ORDER BY childName ASC")
@@ -135,8 +148,17 @@ interface SamDao {
     @Query("SELECT * FROM baseline_assessments")
     suspend fun getAllBaselines(): List<BaselineAssessment>
 
+    @Query("SELECT * FROM baseline_assessments")
+    fun getAllBaselinesFlow(): kotlinx.coroutines.flow.Flow<List<BaselineAssessment>>
+
     @Query("SELECT * FROM longitudinal_followups")
     suspend fun getAllFollowups(): List<LongitudinalFollowup>
+
+    @Query("SELECT * FROM longitudinal_followups")
+    fun getAllFollowupsFlow(): kotlinx.coroutines.flow.Flow<List<LongitudinalFollowup>>
+
+    @Query("SELECT * FROM longitudinal_followups WHERE studyId = :studyId AND followupRound = :round LIMIT 1")
+    suspend fun getFollowupByStudyIdAndRound(studyId: String, round: String): LongitudinalFollowup?
 
     @androidx.room.Query("DELETE FROM longitudinal_followups WHERE studyId = :studyId")
     suspend fun deleteFollowupsForChild(studyId: String)
@@ -210,7 +232,6 @@ abstract class AppDatabase : RoomDatabase() {
                     "sam_tracking_database"
                 )
                 .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
-                .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance

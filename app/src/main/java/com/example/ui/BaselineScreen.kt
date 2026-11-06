@@ -130,8 +130,8 @@ fun BaselineScreen(studyId: String? = null, draftId: String? = null, viewModel: 
                                 thrConsumedDays7d = dynamicAnswers["snp_days"]?.toIntOrNull() ?: 0,
                                 extraDataJson = extraJson
                             )
-                            viewModel.submitBaseline(hl, ch, bs)
-                            if (draftId != null) { viewModel.deleteDraft(draftId) }
+                            val isEdit = !studyId.isNullOrEmpty()
+                            viewModel.submitBaseline(hl, ch, bs, isEditMode = isEdit, draftIdToDelete = draftId)
                         },
                         modifier = Modifier.weight(1f).height(56.dp).testTag("btn_save_baseline"),
                         enabled = formState != FormState.Loading && dynamicAnswers["study_id"].isNullOrBlank().not()

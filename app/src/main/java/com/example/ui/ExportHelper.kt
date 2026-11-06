@@ -8,6 +8,13 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.OutputStream
 
+fun escapeCsvField(value: String): String {
+    if (value.contains("\"") || value.contains(",") || value.contains("\n") || value.contains("\r")) {
+        return "\"" + value.replace("\"", "\"\"") + "\""
+    }
+    return value
+}
+
 suspend fun exportDataToCsvImpl(
     context: Context,
     uri: Uri,
@@ -45,17 +52,16 @@ suspend fun exportDataToCsvImpl(
             val b = baselines[child.studyId]
             val fs = followups[child.studyId] ?: emptyList()
 
-            csvBuilder.append("${child.studyId},${child.csamId},${child.childName},${child.sex},${child.awcName},${child.sectorBlockDistrict},")
-            csvBuilder.append("${hh?.householdId ?: ""},${hh?.familyType ?: ""},${hh?.totalFamilyMembers ?: ""},${hh?.monthlyIncome ?: ""},")
-            csvBuilder.append("${b?.programmeOutcome ?: ""},")
+            csvBuilder.append("${escapeCsvField(child.studyId)},${escapeCsvField(child.csamId)},${escapeCsvField(child.childName)},${escapeCsvField(child.sex)},${escapeCsvField(child.awcName)},${escapeCsvField(child.sectorBlockDistrict)},")
+            csvBuilder.append("${escapeCsvField(hh?.householdId ?: "")},${escapeCsvField(hh?.familyType ?: "")},${hh?.totalFamilyMembers ?: ""},${hh?.monthlyIncome ?: ""},")
+            csvBuilder.append("${escapeCsvField(b?.programmeOutcome ?: "")},")
 
             if (b != null) {
                 try {
                     val json = JSONObject(b.extraDataJson)
                     bFields.forEach { field ->
                         val rawValue = json.optString(field, "")
-                        val value = if (rawValue.contains(",")) "\"${rawValue}\"" else rawValue.replace("\n", " ")
-                        csvBuilder.append("$value,")
+                        csvBuilder.append("${escapeCsvField(rawValue)},")
                     }
                 } catch (e: Exception) {
                     bFields.forEach { csvBuilder.append(",") }
@@ -67,13 +73,15 @@ suspend fun exportDataToCsvImpl(
             rounds.forEach { round ->
                 val f = fs.find { it.followupRound.equals(round, ignoreCase = true) }
                 if (f != null) {
-                    csvBuilder.append("${f.weight},${f.height},${f.whz},${f.currentStatus},")
+                    val weightStr = f.weight?.toString() ?: ""
+                    val heightStr = f.height?.toString() ?: ""
+                    val whzStr = f.whz?.toString() ?: ""
+                    csvBuilder.append("${escapeCsvField(weightStr)},${escapeCsvField(heightStr)},${escapeCsvField(whzStr)},${escapeCsvField(f.currentStatus)},")
                     try {
                         val json = JSONObject(f.extraDataJson)
                         fFields.forEach { field ->
                             val rawValue = json.optString(field, "")
-                            val value = if (rawValue.contains(",")) "\"${rawValue}\"" else rawValue.replace("\n", " ")
-                            csvBuilder.append("$value,")
+                            csvBuilder.append("${escapeCsvField(rawValue)},")
                         }
                     } catch (e: Exception) {
                         fFields.forEach { csvBuilder.append(",") }
@@ -89,9 +97,10 @@ suspend fun exportDataToCsvImpl(
         }
 
         context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-            outputStream.write(csvBuilder.toString().toByteArray())
-        }
+            outputStream.write(csvBuilder.toString().toByteArray(Charsets.UTF_8))
+        } ?: throw IllegalStateException("Unable to open output stream for export")
     } catch (e: Exception) {
         e.printStackTrace()
+        throw e
     }
 }

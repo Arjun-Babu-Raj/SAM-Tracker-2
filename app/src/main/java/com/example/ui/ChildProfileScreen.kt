@@ -108,130 +108,153 @@ fun ChildProfileScreen(
                         Text("AWC: ${child.awcName}", color = subtitleColor)
                         
                         Spacer(modifier = Modifier.height(12.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            val latestStatus = followups.maxByOrNull { it.followupId }?.whz?.let { whz ->
+                        val roundWeight = { r: String -> r.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }
+                        val sortedFollowups = followups.sortedBy { roundWeight(it.followupRound) }
+                        val latestFollowup = sortedFollowups.lastOrNull()
+                        
+                        val latestStatus = if (latestFollowup?.currentStatus.equals("Dead", ignoreCase = true)) {
+                            "Died"
+                        } else {
+                            latestFollowup?.whz?.let { whz ->
                                 when {
                                     whz < -3 -> "SAM"
                                     whz < -2 -> "MAM"
                                     else -> "Normal"
                                 }
                             } ?: baseline?.programmeOutcome ?: "Unknown"
+                        }
                             
-                            val statusColor = when(latestStatus) {
-                                "SAM" -> Color(0xFFFECACA)
-                                "MAM" -> Color(0xFFFEF08A)
-                                "Normal", "Recovered" -> Color(0xFFDCFCE7)
-                                else -> Color(0xFFE2E8F0)
-                            }
-                            
-                            val textColor = when(latestStatus) {
-                                "SAM" -> Color(0xFF991B1B)
-                                "MAM" -> Color(0xFF854D0E)
-                                "Normal", "Recovered" -> Color(0xFF166534)
-                                else -> Color(0xFF475569)
-                            }
+                        val statusColor = when(latestStatus) {
+                            "SAM", "Died" -> Color(0xFFFECACA)
+                            "MAM" -> Color(0xFFFEF08A)
+                            "Normal", "Recovered" -> Color(0xFFDCFCE7)
+                            else -> Color(0xFFE2E8F0)
+                        }
+                        
+                        val textColor = when(latestStatus) {
+                            "SAM", "Died" -> Color(0xFF991B1B)
+                            "MAM" -> Color(0xFF854D0E)
+                            "Normal", "Recovered" -> Color(0xFF166534)
+                            else -> Color(0xFF475569)
+                        }
+                        SuggestionChip(
+                            onClick = {},
+                            label = { Text("Status: $latestStatus", fontWeight = FontWeight.Bold) },
+                            colors = SuggestionChipDefaults.suggestionChipColors(containerColor = statusColor, labelColor = textColor),
+                            border = null
+                        )
+                        
+                        val hasEdema = baseline?.extraDataJson?.let {
+                            try { JSONObject(it).optString("oedema") == "Present" } catch(e: Exception) { false }
+                        } ?: false
+                        
+                        if (hasEdema) {
                             SuggestionChip(
                                 onClick = {},
-                                label = { Text("Status: $latestStatus", fontWeight = FontWeight.Bold) },
-                                colors = SuggestionChipDefaults.suggestionChipColors(containerColor = statusColor, labelColor = textColor),
+                                label = { Text("Oedema Present", fontWeight = FontWeight.Bold) },
+                                colors = SuggestionChipDefaults.suggestionChipColors(containerColor = Color(0xFFFEE2E2), labelColor = Color(0xFF991B1B)),
                                 border = null
                             )
-                            
-                            val hasEdema = baseline?.extraDataJson?.let {
-                                try { JSONObject(it).optString("oedema") == "Present" } catch(e: Exception) { false }
-                            } ?: false
-                            
-                            if (hasEdema) {
-                                SuggestionChip(
-                                    onClick = {},
-                                    label = { Text("Oedema Present", fontWeight = FontWeight.Bold) },
-                                    colors = SuggestionChipDefaults.suggestionChipColors(containerColor = Color(0xFFFEE2E2), labelColor = Color(0xFF991B1B)),
-                                    border = null
-                                )
-                            }
                         }
                     }
                 }
-                
-                Text("Weight Tracking (kg)", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = titleColor)
-                
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth().height(200.dp)
-                ) {
-                    Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                        val weights = mutableListOf<Pair<String, Double>>()
-                        if (baseline != null) {
-                            weights.add("Baseline" to org.json.JSONObject(baseline?.extraDataJson ?: "{}").optDouble("weight_week1", 0.0))
+            
+            Text("Weight Tracking (kg)", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = titleColor)
+            
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().height(200.dp)
+            ) {
+                Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                    val weights = mutableListOf<Pair<String, Double>>()
+                    if (baseline != null) {
+                        val baseWeight = org.json.JSONObject(baseline.extraDataJson).optDouble("weight_week1", Double.NaN)
+                        if (!baseWeight.isNaN()) {
+                            weights.add("Baseline" to baseWeight)
                         }
-                        followups.sortedBy { it.followupRound }.forEach { f -> 
+                    }
+                    val roundWeight = { r: String -> r.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }
+                    followups.sortedBy { roundWeight(it.followupRound) }.forEach { f -> 
+                        val w = f.weight
+                        if (w != null) {
                             val label = try {
                                 val json = JSONObject(f.extraDataJson)
                                 val age = json.optString("child_age_months", "")
                                 if (age.isNotEmpty()) "${age}m" else f.followupRound
                             } catch (e: Exception) { f.followupRound }
-                            weights.add(label to f.weight)
-                        }
-                        if (weights.isNotEmpty()) {
-                            GrowthChartCanvas(weights)
-                        } else {
-                            Text("No measurements available", modifier = Modifier.align(Alignment.Center))
+                            weights.add(label to w)
                         }
                     }
+                    if (weights.isNotEmpty()) {
+                        GrowthChartCanvas(weights)
+                    } else {
+                        Text("No weight measurements available", modifier = Modifier.align(Alignment.Center))
+                    }
                 }
-                
-                Text("WHO Z-Score Tracking (Wasting / WHZ)", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = titleColor)
-                
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth().height(220.dp)
-                ) {
-                    Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                        val zScores = mutableListOf<Pair<String, Double>>()
-                        followups.sortedBy { it.followupRound }.forEach { f -> 
+            }
+            
+            Text("WHO Z-Score Tracking (Wasting / WHZ)", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = titleColor)
+            
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().height(220.dp)
+            ) {
+                Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                    val zScores = mutableListOf<Pair<String, Double>>()
+                    val roundWeight = { r: String -> r.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }
+                    followups.sortedBy { roundWeight(it.followupRound) }.forEach { f -> 
+                        val whzVal = f.whz
+                        if (whzVal != null) {
                             val label = try {
                                 val json = JSONObject(f.extraDataJson)
                                 val age = json.optString("child_age_months", "")
                                 if (age.isNotEmpty()) "${age}m" else f.followupRound
                             } catch (e: Exception) { f.followupRound }
-                            zScores.add(label to f.whz)
-                        }
-                        if (zScores.isNotEmpty()) {
-                            ZScoreChartCanvas(zScores)
-                        } else {
-                            Text("No follow-up Z-scores available", color = subtitleColor, modifier = Modifier.align(Alignment.Center))
+                            zScores.add(label to whzVal)
                         }
                     }
-                }
-                
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Measurement History", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = titleColor)
-                    TextButton(onClick = { onNavigateToEditBaseline(child.studyId) }) {
-                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (baseline != null) "Edit Baseline" else "Add Baseline")
+                    if (zScores.isNotEmpty()) {
+                        ZScoreChartCanvas(zScores)
+                    } else {
+                        Text("No follow-up Z-scores available", color = subtitleColor, modifier = Modifier.align(Alignment.Center))
                     }
                 }
-                
-                if (baseline != null) {
-                    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text("Baseline Enrolment: ${org.json.JSONObject(baseline?.extraDataJson ?: "{}").optDouble("weight_week1", 0.0)}kg", fontWeight = FontWeight.Medium)
-                            Text("Baseline 12-wk: ${org.json.JSONObject(baseline?.extraDataJson ?: "{}").optDouble("weight_week12", 0.0)}kg -> ${baseline.programmeOutcome}", color = subtitleColor)
-                        }
+            }
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Measurement History", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = titleColor)
+                TextButton(onClick = { onNavigateToEditBaseline(child.studyId) }) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (baseline != null) "Edit Baseline" else "Add Baseline")
+                }
+            }
+            
+            if (baseline != null) {
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        val baseJson = org.json.JSONObject(baseline.extraDataJson)
+                        val w1 = baseJson.optString("weight_week1", "-")
+                        val w12 = baseJson.optString("weight_week12", "-")
+                        Text("Baseline Enrolment: ${w1}kg", fontWeight = FontWeight.Medium)
+                        Text("Baseline 12-wk: ${w12}kg -> ${baseline.programmeOutcome}", color = subtitleColor)
                     }
                 }
-                
-                followups.sortedBy { it.followupRound }.forEach { f ->
-                    Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text("${f.followupRound}: ${f.weight}kg (WHZ: ${f.whz})", fontWeight = FontWeight.Medium)
-                            Text("Status: ${f.currentStatus}", color = subtitleColor)
-                        }
+            }
+            
+            val roundWeight = { r: String -> r.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }
+            followups.sortedBy { roundWeight(it.followupRound) }.forEach { f ->
+                Card(colors = CardDefaults.cardColors(containerColor = Color.White), modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        val weightDisplay = f.weight?.let { "${it}kg" } ?: "Not recorded"
+                        val whzDisplay = f.whz?.let { "WHZ: $it" } ?: "WHZ: Not recorded"
+                        Text("${f.followupRound}: $weightDisplay ($whzDisplay)", fontWeight = FontWeight.Medium)
+                        Text("Status: ${f.currentStatus}", color = subtitleColor)
                     }
                 }
+            }
                 Spacer(modifier = Modifier.height(24.dp))
             }
         }

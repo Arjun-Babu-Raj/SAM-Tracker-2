@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -178,6 +179,50 @@ fun AnalyticsScreen(
                 }
             }
 
+            val opStatus by viewModel.operationStatus.collectAsStateWithLifecycle()
+            
+            when (val s = opStatus) {
+                is OperationStatus.Loading -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFFE0F2FE)).padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Color(0xFF0369A1))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Processing data...", color = Color(0xFF0369A1), fontSize = 13.sp)
+                    }
+                }
+                is OperationStatus.Success -> {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFDCFCE7)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(s.message, color = Color(0xFF166534), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { viewModel.clearOperationStatus() }) {
+                                Text("Dismiss", color = Color(0xFF166534), fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+                is OperationStatus.Error -> {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFEE2E2)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(s.message, color = Color(0xFF991B1B), fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { viewModel.clearOperationStatus() }) {
+                                Text("Dismiss", color = Color(0xFF991B1B), fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+                OperationStatus.Idle -> {}
+            }
+
             Spacer(modifier = Modifier.weight(1f))
 
             val context = androidx.compose.ui.platform.LocalContext.current
@@ -193,10 +238,16 @@ fun AnalyticsScreen(
                 uri?.let { viewModel.exportBackup(context, it) }
             }
             
-            val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+            val restoreJsonLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
                 contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
             ) { uri ->
-                uri?.let { viewModel.importBackup(context, it) }
+                uri?.let { viewModel.restoreBackupJson(context, it) }
+            }
+
+            val importCsvLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+            ) { uri ->
+                uri?.let { viewModel.importBackupCsv(context, it) }
             }
             
             Button(
@@ -208,26 +259,35 @@ fun AnalyticsScreen(
                 Text("Export Data to CSV", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
             }
             
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(
                     onClick = { backupLauncher.launch("sam_backup.json") },
                     modifier = Modifier.weight(1f).height(48.dp),
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0061A4))
                 ) {
-                    Text("Backup (JSON)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Backup (JSON)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
                 
                 Button(
-                    onClick = { importLauncher.launch(arrayOf("text/comma-separated-values", "text/csv")) },
+                    onClick = { restoreJsonLauncher.launch(arrayOf("application/json", "*/*")) },
                     modifier = Modifier.weight(1f).height(48.dp),
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBA1A1A))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF475569))
                 ) {
-                    Text("Restore (CSV)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Restore (JSON)", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
-            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { importCsvLauncher.launch(arrayOf("text/comma-separated-values", "text/csv", "*/*")) },
+                modifier = Modifier.fillMaxWidth().height(44.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBA1A1A))
+            ) {
+                Text("Restore from CSV Export", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }

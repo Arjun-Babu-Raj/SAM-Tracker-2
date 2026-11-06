@@ -9,41 +9,98 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
+fun parseCsvRecords(reader: java.io.Reader): List<List<String>> {
+    val records = mutableListOf<List<String>>()
+    val currentRecord = mutableListOf<String>()
+    val currentField = StringBuilder()
+    var inQuotes = false
+    var prevChar: Char? = null
+
+    var intChar = reader.read()
+    while (intChar != -1) {
+        val c = intChar.toChar()
+        when {
+            c == '"' -> {
+                if (inQuotes) {
+                    reader.mark(1)
+                    val nextInt = reader.read()
+                    if (nextInt != -1 && nextInt.toChar() == '"') {
+                        // Escaped quote
+                        currentField.append('"')
+                    } else {
+                        // End of quote
+                        inQuotes = false
+                        reader.reset()
+                    }
+                } else {
+                    inQuotes = true
+                }
+            }
+            c == ',' && !inQuotes -> {
+                currentRecord.add(currentField.toString())
+                currentField.setLength(0)
+            }
+            c == '\r' && !inQuotes -> {
+                // Check for \r\n
+                reader.mark(1)
+                val nextInt = reader.read()
+                if (nextInt != -1 && nextInt.toChar() == '\n') {
+                    // It's CRLF
+                } else {
+                    reader.reset()
+                }
+                currentRecord.add(currentField.toString())
+                currentField.setLength(0)
+                if (currentRecord.any { it.isNotBlank() }) {
+                    records.add(ArrayList(currentRecord))
+                }
+                currentRecord.clear()
+            }
+            c == '\n' && !inQuotes -> {
+                currentRecord.add(currentField.toString())
+                currentField.setLength(0)
+                if (currentRecord.any { it.isNotBlank() }) {
+                    records.add(ArrayList(currentRecord))
+                }
+                currentRecord.clear()
+            }
+            else -> {
+                currentField.append(c)
+            }
+        }
+        intChar = reader.read()
+    }
+    if (currentField.isNotEmpty() || currentRecord.isNotEmpty()) {
+        currentRecord.add(currentField.toString())
+        if (currentRecord.any { it.isNotBlank() }) {
+            records.add(ArrayList(currentRecord))
+        }
+    }
+    return records
+}
+
 suspend fun importDataFromCsvImpl(
     context: Context,
     uri: Uri,
     repository: SamRepository
 ) = withContext(Dispatchers.IO) {
     try {
-        val inputStream = context.contentResolver.openInputStream(uri) ?: return@withContext
-        val reader = BufferedReader(InputStreamReader(inputStream))
-        val headerLine = reader.readLine() ?: return@withContext
-        val headers = headerLine.split(",")
+        val inputStream = context.contentResolver.openInputStream(uri) 
+            ?: throw IllegalStateException("Unable to open input stream for CSV")
+        val reader = BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8))
+        
+        val allRecords = parseCsvRecords(reader)
+        if (allRecords.isEmpty()) return@withContext
+        val headers = allRecords[0].map { it.trim() }
         
         val bFields = QuestionBank.baselineSections.flatMap { it.fields }.filter { it !is FormField.Subheading }.map { it.id }
         val fFields = QuestionBank.followupSections.flatMap { it.fields }.filter { it !is FormField.Subheading }.map { it.id }
         val rounds = listOf("M9", "M12", "M15")
 
-        var line = reader.readLine()
-        while (line != null) {
-                        val cols = mutableListOf<String>()
-            var current = java.lang.StringBuilder()
-            var inQuotes = false
-            for (char in line) {
-                if (char == '"') {
-                    inQuotes = !inQuotes
-                } else if (char == ',' && !inQuotes) {
-                    cols.add(current.toString().trim())
-                    current = java.lang.StringBuilder()
-                } else {
-                    current.append(char)
-                }
-            }
-            cols.add(current.toString().trim())
-            if (cols.size < 10) {
-                line = reader.readLine()
-                continue
-            }
+        for (i in 1 until allRecords.size) {
+            val cols = allRecords[i]
+            if (cols.size < 6) continue
+
             val getCol = { headerStart: String -> 
                 val idx = headers.indexOfFirst { it.equals(headerStart, ignoreCase = true) }
                 if (idx != -1 && idx < cols.size) cols[idx] else ""
@@ -56,32 +113,35 @@ suspend fun importDataFromCsvImpl(
             val awcName = getCol("AWC")
             val sector = getCol("Sector")
 
-            val hhId = getCol("HouseholdID")
+            val hhId = getCol("HouseholdID").takeIf { it.isNotBlank() } ?: studyId
             val fType = getCol("FamilyType")
             val fMembers = getCol("FamilyMembers").toIntOrNull() ?: 0
             val mIncome = getCol("MonthlyIncome").toDoubleOrNull() ?: 0.0
 
-            if (studyId.isNotBlank() && hhId.isNotBlank()) {
+            if (studyId.isNotBlank()) {
                 val hh = Household(hhId, fType, fMembers, mIncome)
                 repository.insertHousehold(hh)
 
                 val ch = Child(studyId, csamId, hhId, childName, sex, awcName, sector)
                 repository.insertChild(ch)
 
-                // Baseline
-                val bEnrol = getCol("Baseline_WeightEnrol").toDoubleOrNull()
-                if (bEnrol != null) {
-                    val bWeight12 = getCol("Baseline_Weight12").toDoubleOrNull() ?: 0.0
-                    val bHeightEnrol = getCol("Baseline_HeightEnrol").toDoubleOrNull() ?: 0.0
-                    val bHeight12 = getCol("Baseline_Height12").toDoubleOrNull() ?: 0.0
-                    val bOutcome = getCol("Baseline_Outcome")
-                    
-                    val bJson = JSONObject()
-                    bFields.forEach { f -> bJson.put(f, getCol("Base_${f}")) }
-                    
+                // Baseline Assessment Check
+                val bOutcome = getCol("Baseline_Outcome")
+                val bJson = JSONObject()
+                var hasBaselineData = bOutcome.isNotBlank()
+                
+                bFields.forEach { f -> 
+                    val valFromCol = getCol("Base_${f}")
+                    if (valFromCol.isNotBlank()) {
+                        hasBaselineData = true
+                        bJson.put(f, valFromCol)
+                    }
+                }
+                
+                if (hasBaselineData) {
                     val b = BaselineAssessment(
                         studyId = studyId,
-                        programmeOutcome = bOutcome,
+                        programmeOutcome = bOutcome.ifBlank { bJson.optString("programme_outcome", "") },
                         thrReceivedTreatment = bJson.optString("snp_provided", ""),
                         thrConsumedDays7d = bJson.optString("snp_days", "0").toIntOrNull() ?: 0,
                         extraDataJson = bJson.toString()
@@ -92,34 +152,41 @@ suspend fun importDataFromCsvImpl(
                 // Followups
                 rounds.forEach { round ->
                     val fw = getCol("${round}_Weight").toDoubleOrNull()
-                    if (fw != null) {
-                        val fh = getCol("${round}_Height").toDoubleOrNull() ?: 0.0
-                        val fwhz = getCol("${round}_WHZ").toDoubleOrNull() ?: 0.0
-                        val fStatus = getCol("${round}_Status")
+                    val fh = getCol("${round}_Height").toDoubleOrNull()
+                    val fwhz = getCol("${round}_WHZ").toDoubleOrNull()
+                    val fStatus = getCol("${round}_Status")
 
-                        val fJson = JSONObject()
-                        fFields.forEach { f -> fJson.put(f, getCol("${round}_${f}")) }
+                    val fJson = JSONObject()
+                    var hasFollowupData = fw != null || fh != null || fwhz != null || fStatus.isNotBlank()
+                    
+                    fFields.forEach { f -> 
+                        val valFromCol = getCol("${round}_${f}")
+                        if (valFromCol.isNotBlank()) {
+                            hasFollowupData = true
+                            fJson.put(f, valFromCol)
+                        }
+                    }
 
+                    if (hasFollowupData) {
                         val f = LongitudinalFollowup(
                             studyId = studyId,
                             followupRound = round,
-                            currentStatus = fStatus,
+                            currentStatus = fStatus.ifBlank { "Alive" },
                             weight = fw,
                             height = fh,
                             whz = fwhz,
-                            thrReceived = "",
-                            thrConsumedDays7d = 0,
-                            dietaryScore24h = 0,
+                            thrReceived = fJson.optString("snp_provided", ""),
+                            thrConsumedDays7d = fJson.optString("snp_days", "0").toIntOrNull() ?: 0,
+                            dietaryScore24h = fJson.optString("dietary_groups", "").split(",").filter { it.isNotBlank() }.size,
                             extraDataJson = fJson.toString()
                         )
                         repository.logFollowup(f)
                     }
                 }
             }
-
-            line = reader.readLine()
         }
     } catch (e: Exception) {
         e.printStackTrace()
+        throw e
     }
 }

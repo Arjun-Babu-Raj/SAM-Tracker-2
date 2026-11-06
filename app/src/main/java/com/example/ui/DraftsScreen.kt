@@ -1,5 +1,5 @@
 package com.example.ui
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -37,7 +37,7 @@ fun DraftsScreen(
     val drafts by viewModel.drafts.collectAsState(initial = emptyList())
     
     Scaffold(
-                bottomBar = {
+        bottomBar = {
             NavigationBar(
                 containerColor = Color.White,
                 tonalElevation = 0.dp
@@ -45,26 +45,26 @@ fun DraftsScreen(
                 NavigationBarItem(
                     selected = false,
                     onClick = onNavigateToHome,
-                    icon = { Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.Assignment, contentDescription = null, tint = Color(0xFF64748B)) },
+                    icon = { Icon(Icons.AutoMirrored.Filled.Assignment, contentDescription = null, tint = Color(0xFF64748B)) },
                     label = { Text("Home", color = Color(0xFF64748B)) }
                 )
                 NavigationBarItem(
                     selected = false,
                     onClick = onNavigateToRecords,
-                    icon = { Icon(androidx.compose.material.icons.Icons.Default.Timeline, contentDescription = null, tint = Color(0xFF64748B)) },
+                    icon = { Icon(Icons.Default.Timeline, contentDescription = null, tint = Color(0xFF64748B)) },
                     label = { Text("Records", color = Color(0xFF64748B)) }
                 )
                 NavigationBarItem(
                     selected = false,
                     onClick = onNavigateToAnalytics,
-                    icon = { Icon(androidx.compose.material.icons.Icons.Default.BarChart, contentDescription = null, tint = Color(0xFF64748B)) },
+                    icon = { Icon(Icons.Default.BarChart, contentDescription = null, tint = Color(0xFF64748B)) },
                     label = { Text("Analytics", color = Color(0xFF64748B)) }
                 )
                 NavigationBarItem(
                     selected = true,
                     onClick = { },
                     icon = {
-                        Box(modifier = Modifier.clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).background(Color(0xFFD3E4FF)).padding(horizontal = 20.dp, vertical = 4.dp)) { Icon(androidx.compose.material.icons.Icons.Default.Edit, contentDescription = null, tint = Color(0xFF001D35)) }
+                        Box(modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(Color(0xFFD3E4FF)).padding(horizontal = 20.dp, vertical = 4.dp)) { Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFF001D35)) }
                     },
                     label = { Text("Drafts", fontWeight = FontWeight.Bold, color = Color(0xFF001D35)) }, colors = NavigationBarItemDefaults.colors(indicatorColor = Color.Transparent)
                 )
@@ -75,7 +75,7 @@ fun DraftsScreen(
                 title = { Text("Saved Drafts") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateToHome) {
-                        Icon(androidx.compose.material.icons.Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )

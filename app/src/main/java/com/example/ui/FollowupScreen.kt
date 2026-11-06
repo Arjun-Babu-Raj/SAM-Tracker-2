@@ -217,16 +217,15 @@ fun FollowupScreen(draftId: String? = null, viewModel: MainViewModel, onNavigate
                                     studyId = searchedChild!!.studyId,
                                     followupRound = round,
                                     currentStatus = currentStatus,
-                                    weight = dynamicAnswers["weight"]?.toDoubleOrNull() ?: 0.0,
-                                    height = dynamicAnswers["height"]?.toDoubleOrNull() ?: 0.0,
-                                    whz = dynamicAnswers["whz"]?.toDoubleOrNull() ?: 0.0,
+                                    weight = dynamicAnswers["weight"]?.toDoubleOrNull(),
+                                    height = dynamicAnswers["height"]?.toDoubleOrNull(),
+                                    whz = dynamicAnswers["whz"]?.toDoubleOrNull(),
                                     thrReceived = dynamicAnswers["snp_provided"] ?: "",
                                     thrConsumedDays7d = dynamicAnswers["snp_days"]?.toIntOrNull() ?: 0,
                                     dietaryScore24h = dynamicAnswers["dietary_groups"]?.split(",")?.filter { it.isNotBlank() }?.size ?: 0,
                                     extraDataJson = extraJson
                                 )
-                                viewModel.submitFollowup(followup)
-                                if (draftId != null) { viewModel.deleteDraft(draftId) }
+                                viewModel.submitFollowup(followup, draftId)
                             },
                             modifier = Modifier.weight(1f).height(56.dp).testTag("btn_save_followup"),
                             enabled = formState != FormState.Loading && dynamicAnswers["followup_round"].isNullOrBlank().not()

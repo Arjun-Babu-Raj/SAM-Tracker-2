@@ -17,13 +17,35 @@ class SamRepository(val dao: SamDao) {
         }
     }
 
+    suspend fun searchChildExact(query: String): Child? {
+        return withContext(Dispatchers.IO) {
+            dao.getChildByExactStudyOrCsamId(query) ?: dao.getChildByExactName(query)
+        }
+    }
+
+    suspend fun getChildByStudyId(studyId: String): Child? = withContext(Dispatchers.IO) {
+        dao.getChildByStudyId(studyId)
+    }
+
+    suspend fun getChildByCsamId(csamId: String): Child? = withContext(Dispatchers.IO) {
+        dao.getChildByCsamId(csamId)
+    }
+
     suspend fun logFollowup(followup: LongitudinalFollowup) {
         withContext(Dispatchers.IO) {
-            dao.insertFollowup(followup)
+            val existing = dao.getFollowupByStudyIdAndRound(followup.studyId, followup.followupRound)
+            val followupToSave = if (existing != null) {
+                followup.copy(followupId = existing.followupId)
+            } else {
+                followup
+            }
+            dao.insertFollowup(followupToSave)
         }
     }
 
     fun getAllChildren() = dao.getAllChildren()
+    fun getAllFollowupsFlow() = dao.getAllFollowupsFlow()
+    fun getAllBaselinesFlow() = dao.getAllBaselinesFlow()
 
     suspend fun getAllHouseholds(): List<Household> = withContext(Dispatchers.IO) { dao.getAllHouseholds() }
     suspend fun getAllChildrenList(): List<Child> = withContext(Dispatchers.IO) { dao.getAllChildrenList() }
