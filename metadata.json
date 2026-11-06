@@ -1,0 +1,6 @@
+{
+  "name": "SAM Tracker",
+  "description": "Longitudinal public health tracking system for children recovering from Severe Acute Malnutrition (SAM)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
