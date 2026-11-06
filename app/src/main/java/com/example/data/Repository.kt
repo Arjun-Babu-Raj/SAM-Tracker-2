@@ -4,11 +4,22 @@ import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class SamRepository(val dao: SamDao, private val db: AppDatabase? = null) {
+class SamRepository(
+    val dao: SamDao,
+    private val db: AppDatabase? = null,
+    private val transactionWrapper: (suspend (suspend () -> Unit) -> Unit)? = null
+) {
 
     suspend fun <R> runInTransaction(block: suspend () -> R): R = withContext(Dispatchers.IO) {
         if (db != null) {
             db.withTransaction { block() }
+        } else if (transactionWrapper != null) {
+            var result: R? = null
+            transactionWrapper.invoke {
+                result = block()
+            }
+            @Suppress("UNCHECKED_CAST")
+            result as R
         } else {
             block()
         }

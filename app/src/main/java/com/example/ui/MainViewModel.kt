@@ -296,16 +296,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun getChildProfileData(studyId: String): kotlinx.coroutines.flow.Flow<Triple<Child, BaselineAssessment?, List<LongitudinalFollowup>>?> = kotlinx.coroutines.flow.flow {
-        val child = repository.getChildByStudyId(studyId) ?: repository.searchChildExact(studyId)
-        if (child != null) {
-            val baselines = repository.getAllBaselines().filter { it.studyId == child.studyId }
-            val followups = repository.getAllFollowups().filter { it.studyId == child.studyId }
-            emit(Triple(child, baselines.firstOrNull(), followups))
-        } else {
-            emit(null)
-        }
-    }
+    fun getChildProfileData(studyId: String): kotlinx.coroutines.flow.Flow<Triple<Child, BaselineAssessment?, List<LongitudinalFollowup>>?> =
+        kotlinx.coroutines.flow.combine(
+            repository.dao.childFlow(studyId),
+            repository.dao.baselineFlow(studyId),
+            repository.dao.followupsFlow(studyId)
+        ) { c, b, f -> c?.let { Triple(it, b, f) } }
 
     fun exportBackup(context: android.content.Context, uri: android.net.Uri) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -315,58 +311,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val children = repository.getAllChildrenList()
                 val baselines = repository.getAllBaselines()
                 val followups = repository.getAllFollowups()
-                val json = org.json.JSONObject()
-                val hhArray = org.json.JSONArray()
-                households.forEach { hh ->
-                    val obj = org.json.JSONObject()
-                    obj.put("householdId", hh.householdId)
-                    obj.put("familyType", hh.familyType)
-                    obj.put("totalFamilyMembers", hh.totalFamilyMembers)
-                    obj.put("monthlyIncome", hh.monthlyIncome)
-                    hhArray.put(obj)
-                }
-                json.put("households", hhArray)
-                val chArray = org.json.JSONArray()
-                children.forEach { ch ->
-                    val obj = org.json.JSONObject()
-                    obj.put("studyId", ch.studyId)
-                    obj.put("csamId", ch.csamId)
-                    obj.put("householdId", ch.householdId)
-                    obj.put("childName", ch.childName)
-                    obj.put("sex", ch.sex)
-                    obj.put("awcName", ch.awcName)
-                    obj.put("sectorBlockDistrict", ch.sectorBlockDistrict)
-                    chArray.put(obj)
-                }
-                json.put("children", chArray)
-                val bArray = org.json.JSONArray()
-                baselines.forEach { b ->
-                    val obj = org.json.JSONObject()
-                    obj.put("studyId", b.studyId)
-                    obj.put("programmeOutcome", b.programmeOutcome)
-                    obj.put("thrReceivedTreatment", b.thrReceivedTreatment)
-                    obj.put("thrConsumedDays7d", b.thrConsumedDays7d)
-                    obj.put("extraDataJson", b.extraDataJson)
-                    bArray.put(obj)
-                }
-                json.put("baselines", bArray)
-                val fArray = org.json.JSONArray()
-                followups.forEach { f ->
-                    val obj = org.json.JSONObject()
-                    obj.put("studyId", f.studyId)
-                    obj.put("followupRound", f.followupRound)
-                    obj.put("currentStatus", f.currentStatus)
-                    f.weight?.let { obj.put("weight", it) }
-                    f.height?.let { obj.put("height", it) }
-                    f.whz?.let { obj.put("whz", it) }
-                    obj.put("thrReceived", f.thrReceived)
-                    obj.put("thrConsumedDays7d", f.thrConsumedDays7d)
-                    obj.put("dietaryScore24h", f.dietaryScore24h)
-                    obj.put("extraDataJson", f.extraDataJson)
-                    fArray.put(obj)
-                }
-                json.put("followups", fArray)
-                context.contentResolver.openOutputStream(uri)?.use { it.write(json.toString(2).toByteArray(Charsets.UTF_8)) }
+                val jsonStr = buildBackupJsonString(households, children, baselines, followups)
+                context.contentResolver.openOutputStream(uri)?.use { it.write(jsonStr.toByteArray(Charsets.UTF_8)) }
                     ?: throw IllegalStateException("Could not write backup file.")
                 _operationStatus.value = OperationStatus.Success("Backup JSON exported successfully.")
             } catch (e: Exception) {
@@ -383,102 +329,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val inputStream = context.contentResolver.openInputStream(uri)
                     ?: throw IllegalStateException("Cannot read selected file.")
                 val jsonString = inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                val root = org.json.JSONObject(jsonString)
-
-                var importedChildren = 0
-                var skippedChildren = 0
-                val skippedStudyIds = mutableSetOf<String>()
-
-                repository.runInTransaction {
-                    val hhArray = root.optJSONArray("households")
-                    if (hhArray != null) {
-                        for (i in 0 until hhArray.length()) {
-                            val obj = hhArray.getJSONObject(i)
-                            val hhId = obj.optString("householdId", "").trim()
-                            if (hhId.isBlank()) continue
-                            repository.insertHousehold(
-                                Household(
-                                    householdId = hhId,
-                                    familyType = obj.optString("familyType", ""),
-                                    totalFamilyMembers = obj.optInt("totalFamilyMembers", 0),
-                                    monthlyIncome = obj.optDouble("monthlyIncome", 0.0)
-                                )
-                            )
-                        }
-                    }
-
-                    val chArray = root.optJSONArray("children")
-                    if (chArray != null) {
-                        for (i in 0 until chArray.length()) {
-                            val obj = chArray.getJSONObject(i)
-                            val studyId = obj.optString("studyId", "").trim()
-                            val csamId = obj.optString("csamId", "").trim()
-                            val householdId = obj.optString("householdId", "").trim().ifBlank { studyId }
-                            if (studyId.isBlank() || csamId.isBlank()) {
-                                skippedChildren++
-                                if (studyId.isNotBlank()) skippedStudyIds.add(studyId)
-                                continue
-                            }
-                            repository.insertChild(
-                                Child(
-                                    studyId = studyId,
-                                    csamId = csamId,
-                                    householdId = householdId,
-                                    childName = obj.optString("childName", ""),
-                                    sex = obj.optString("sex", ""),
-                                    awcName = obj.optString("awcName", ""),
-                                    sectorBlockDistrict = obj.optString("sectorBlockDistrict", "")
-                                )
-                            )
-                            importedChildren++
-                        }
-                    }
-
-                    val bArray = root.optJSONArray("baselines")
-                    if (bArray != null) {
-                        for (i in 0 until bArray.length()) {
-                            val obj = bArray.getJSONObject(i)
-                            val studyId = obj.optString("studyId", "").trim()
-                            if (studyId.isBlank() || studyId in skippedStudyIds) continue
-                            repository.insertBaseline(
-                                BaselineAssessment(
-                                    studyId = studyId,
-                                    programmeOutcome = obj.optString("programmeOutcome", ""),
-                                    thrReceivedTreatment = obj.optString("thrReceivedTreatment", ""),
-                                    thrConsumedDays7d = obj.optInt("thrConsumedDays7d", 0),
-                                    extraDataJson = obj.optString("extraDataJson", "{}")
-                                )
-                            )
-                        }
-                    }
-
-                    val fArray = root.optJSONArray("followups")
-                    if (fArray != null) {
-                        for (i in 0 until fArray.length()) {
-                            val obj = fArray.getJSONObject(i)
-                            val studyId = obj.optString("studyId", "").trim()
-                            if (studyId.isBlank() || studyId in skippedStudyIds) continue
-                            val fw = if (obj.has("weight") && !obj.isNull("weight")) obj.getDouble("weight") else null
-                            val fh = if (obj.has("height") && !obj.isNull("height")) obj.getDouble("height") else null
-                            val fwhz = if (obj.has("whz") && !obj.isNull("whz")) obj.getDouble("whz") else null
-
-                            repository.logFollowup(
-                                LongitudinalFollowup(
-                                    studyId = studyId,
-                                    followupRound = obj.getString("followupRound"),
-                                    currentStatus = obj.optString("currentStatus", "Alive"),
-                                    weight = fw,
-                                    height = fh,
-                                    whz = fwhz,
-                                    thrReceived = obj.optString("thrReceived", ""),
-                                    thrConsumedDays7d = obj.optInt("thrConsumedDays7d", 0),
-                                    dietaryScore24h = obj.optInt("dietaryScore24h", 0),
-                                    extraDataJson = obj.optString("extraDataJson", "{}")
-                                )
-                            )
-                        }
-                    }
-                }
+                val (importedChildren, skippedChildren) = restoreBackupFromJsonString(jsonString, repository)
                 val msg = if (skippedChildren > 0) {
                     "Backup restored: $importedChildren children ($skippedChildren skipped due to blank Study/CSAM ID)."
                 } else {

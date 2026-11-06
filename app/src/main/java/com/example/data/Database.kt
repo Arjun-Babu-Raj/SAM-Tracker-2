@@ -157,6 +157,15 @@ interface SamDao {
     @Query("SELECT * FROM longitudinal_followups")
     fun getAllFollowupsFlow(): kotlinx.coroutines.flow.Flow<List<LongitudinalFollowup>>
 
+    @Query("SELECT * FROM children WHERE studyId = :id LIMIT 1")
+    fun childFlow(id: String): kotlinx.coroutines.flow.Flow<Child?>
+
+    @Query("SELECT * FROM baseline_assessments WHERE studyId = :id LIMIT 1")
+    fun baselineFlow(id: String): kotlinx.coroutines.flow.Flow<BaselineAssessment?>
+
+    @Query("SELECT * FROM longitudinal_followups WHERE studyId = :id")
+    fun followupsFlow(id: String): kotlinx.coroutines.flow.Flow<List<LongitudinalFollowup>>
+
     @Query("SELECT * FROM longitudinal_followups WHERE studyId = :studyId AND followupRound = :round LIMIT 1")
     suspend fun getFollowupByStudyIdAndRound(studyId: String, round: String): LongitudinalFollowup?
 
@@ -166,12 +175,15 @@ interface SamDao {
     suspend fun deleteBaselineForChild(studyId: String)
     @androidx.room.Query("DELETE FROM children WHERE studyId = :studyId")
     suspend fun deleteChild(studyId: String)
+    @androidx.room.Query("DELETE FROM households WHERE householdId NOT IN (SELECT DISTINCT householdId FROM children)")
+    suspend fun deleteOrphanedHouseholds()
 
     @androidx.room.Transaction
     suspend fun deleteChildRecord(studyId: String) {
         deleteFollowupsForChild(studyId)
         deleteBaselineForChild(studyId)
         deleteChild(studyId)
+        deleteOrphanedHouseholds()
     }
 
     @Upsert

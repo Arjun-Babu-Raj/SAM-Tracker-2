@@ -37,7 +37,8 @@ fun ChildProfileScreen(
     onNavigateBack: () -> Unit,
     onNavigateToEditBaseline: (String) -> Unit
 ) {
-    val childData by viewModel.getChildProfileData(studyId).collectAsState(initial = null)
+    val profileFlow = remember(studyId) { viewModel.getChildProfileData(studyId) }
+    val childData by profileFlow.collectAsState(initial = null)
     
     val bgColor = Color(0xFFF8F9FF)
     val titleColor = Color(0xFF001D35)
