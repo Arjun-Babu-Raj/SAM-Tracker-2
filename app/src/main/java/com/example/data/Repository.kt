@@ -1,9 +1,18 @@
 package com.example.data
 
+import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class SamRepository(val dao: SamDao) {
+class SamRepository(val dao: SamDao, private val db: AppDatabase? = null) {
+
+    suspend fun <R> runInTransaction(block: suspend () -> R): R = withContext(Dispatchers.IO) {
+        if (db != null) {
+            db.withTransaction { block() }
+        } else {
+            block()
+        }
+    }
 
     suspend fun logBaseline(household: Household, child: Child, baseline: BaselineAssessment) {
         withContext(Dispatchers.IO) {
@@ -29,6 +38,10 @@ class SamRepository(val dao: SamDao) {
 
     suspend fun getChildByCsamId(csamId: String): Child? = withContext(Dispatchers.IO) {
         dao.getChildByCsamId(csamId)
+    }
+
+    suspend fun getFollowupByStudyIdAndRound(studyId: String, round: String): LongitudinalFollowup? = withContext(Dispatchers.IO) {
+        dao.getFollowupByStudyIdAndRound(studyId, round)
     }
 
     suspend fun logFollowup(followup: LongitudinalFollowup) {

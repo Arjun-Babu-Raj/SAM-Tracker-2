@@ -16,7 +16,8 @@ fun DynamicFormFields(
     sections: List<FormSection>,
     answers: Map<String, String>,
     onAnswerChange: (String, String) -> Unit,
-    isHindi: Boolean = false
+    isHindi: Boolean = false,
+    readOnlyFields: Set<String> = emptySet()
 ) {
     Column {
         sections.forEach { section ->
@@ -73,9 +74,12 @@ fun DynamicFormFields(
                         is FormField.Text -> {
                             val labelText = if (isHindi) field.labelHi else field.labelEn
                             val keyboardOptions = if (field.isNumber) KeyboardOptions(keyboardType = KeyboardType.Number) else KeyboardOptions.Default
+                            val isReadOnly = field.id in readOnlyFields
                             OutlinedTextField(
                                 value = answers[field.id] ?: "",
-                                onValueChange = { onAnswerChange(field.id, it) },
+                                onValueChange = { if (!isReadOnly) onAnswerChange(field.id, it) },
+                                readOnly = isReadOnly,
+                                enabled = !isReadOnly,
                                 label = { Text(labelText) },
                                 keyboardOptions = keyboardOptions,
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)

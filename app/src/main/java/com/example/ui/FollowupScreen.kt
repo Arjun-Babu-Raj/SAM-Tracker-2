@@ -170,6 +170,37 @@ fun FollowupScreen(draftId: String? = null, viewModel: MainViewModel, onNavigate
                         }
                     }
                 } else { 
+                    if (formState is FormState.ConfirmOverwrite) {
+                        val confirmState = formState as FormState.ConfirmOverwrite
+                        AlertDialog(
+                            onDismissRequest = { viewModel.dismissOverwriteConfirmation() },
+                            title = { Text("Confirm Overwrite") },
+                            text = { Text(confirmState.message) },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        viewModel.submitFollowup(
+                                            followup = confirmState.followup,
+                                            draftIdToDelete = confirmState.draftIdToDelete,
+                                            forceOverwrite = true
+                                        )
+                                    },
+                                    modifier = Modifier.testTag("btn_confirm_overwrite")
+                                ) {
+                                    Text("Overwrite")
+                                }
+                            },
+                            dismissButton = {
+                                OutlinedButton(
+                                    onClick = { viewModel.dismissOverwriteConfirmation() },
+                                    modifier = Modifier.testTag("btn_cancel_overwrite")
+                                ) {
+                                    Text("Cancel")
+                                }
+                            }
+                        )
+                    }
+
                     if (formState is FormState.Error) {
                         Text(
                             text = "Error: ${(formState as FormState.Error).message}",

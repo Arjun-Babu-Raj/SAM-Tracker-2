@@ -140,42 +140,60 @@ fun AnalyticsScreen(
                 fontSize = 18.sp, 
                 fontWeight = FontWeight.SemiBold, 
                 color = titleColor,
-                modifier = Modifier.padding(top = 8.dp)
+                modifier = Modifier.padding(top = 4.dp)
             )
             
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.weight(1f).shadow(2.dp, RoundedCornerShape(24.dp))
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.weight(1f).shadow(2.dp, RoundedCornerShape(20.dp))
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text("SAM", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBA1A1A))
-                        Text("${stats.sam}", fontSize = 24.sp, fontWeight = FontWeight.Light, color = Color(0xFFBA1A1A))
+                        Text("${stats.sam}", fontSize = 22.sp, fontWeight = FontWeight.Light, color = Color(0xFFBA1A1A))
                         Text("WHZ < -3", fontSize = 10.sp, color = subtitleColor)
                     }
                 }
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.weight(1f).shadow(2.dp, RoundedCornerShape(24.dp))
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.weight(1f).shadow(2.dp, RoundedCornerShape(20.dp))
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text("MAM", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFD97706))
-                        Text("${stats.mam}", fontSize = 24.sp, fontWeight = FontWeight.Light, color = Color(0xFFD97706))
+                        Text("${stats.mam}", fontSize = 22.sp, fontWeight = FontWeight.Light, color = Color(0xFFD97706))
                         Text("-3 ≤ WHZ < -2", fontSize = 10.sp, color = subtitleColor)
                     }
                 }
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.weight(1f).shadow(2.dp, RoundedCornerShape(24.dp))
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier.weight(1f).shadow(2.dp, RoundedCornerShape(20.dp))
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Text("NORMAL", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
-                        Text("${stats.normal}", fontSize = 24.sp, fontWeight = FontWeight.Light, color = Color(0xFF16A34A))
+                        Text("${stats.normal}", fontSize = 22.sp, fontWeight = FontWeight.Light, color = Color(0xFF16A34A))
                         Text("WHZ ≥ -2", fontSize = 10.sp, color = subtitleColor)
                     }
+                }
+            }
+
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(20.dp))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("NOT YET MEASURED", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = subtitleColor)
+                        Text("No follow-up WHZ (e.g. Defaulter / Non-responder / Referred)", fontSize = 11.sp, color = subtitleColor)
+                    }
+                    Text("${stats.notYetMeasured}", fontSize = 24.sp, fontWeight = FontWeight.Light, color = titleColor)
                 }
             }
 

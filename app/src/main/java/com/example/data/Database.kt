@@ -190,8 +190,8 @@ interface SamDao {
 
 @Database(
     entities = [Household::class, Child::class, BaselineAssessment::class, LongitudinalFollowup::class, Draft::class],
-    version = 4,
-    exportSchema = false
+    version = 5,
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun samDao(): SamDao
@@ -200,20 +200,6 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        fun getDatabase(context: Context): AppDatabase {
-        
-        val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
-            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
-                db.execSQL("CREATE TABLE IF NOT EXISTS `drafts` (`id` TEXT NOT NULL, `formType` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `dataJson` TEXT NOT NULL, PRIMARY KEY(`id`))")
-            }
-        }
-
-
-        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
-            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
-                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_longitudinal_followups_studyId_followupRound` ON `longitudinal_followups` (`studyId`, `followupRound`)")
-            }
-        }
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("DELETE FROM `longitudinal_followups` WHERE `followupId` NOT IN (SELECT MIN(`followupId`) FROM `longitudinal_followups` GROUP BY `studyId`, `followupRound`)")
@@ -222,16 +208,58 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_children_householdId` ON `children` (`householdId`)")
             }
         }
+
+        val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `drafts` (`id` TEXT NOT NULL, `formType` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `dataJson` TEXT NOT NULL, PRIMARY KEY(`id`))")
+            }
+        }
+
+        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_longitudinal_followups_studyId_followupRound` ON `longitudinal_followups` (`studyId`, `followupRound`)")
+            }
+        }
+
+        val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `longitudinal_followups_new` (
+                        `followupId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `studyId` TEXT NOT NULL,
+                        `followupRound` TEXT NOT NULL,
+                        `currentStatus` TEXT NOT NULL,
+                        `weight` REAL,
+                        `height` REAL,
+                        `whz` REAL,
+                        `thrReceived` TEXT NOT NULL,
+                        `thrConsumedDays7d` INTEGER NOT NULL,
+                        `dietaryScore24h` INTEGER NOT NULL,
+                        `extraDataJson` TEXT NOT NULL,
+                        FOREIGN KEY(`studyId`) REFERENCES `children`(`studyId`) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL(
+                    """INSERT INTO `longitudinal_followups_new`
+                        SELECT `followupId`, `studyId`, `followupRound`, `currentStatus`,
+                        NULLIF(`weight`, 0), NULLIF(`height`, 0), CASE WHEN `whz` = 0 AND `weight` = 0 THEN NULL ELSE `whz` END,
+                        `thrReceived`, `thrConsumedDays7d`, `dietaryScore24h`, `extraDataJson`
+                        FROM `longitudinal_followups`"""
+                )
+                db.execSQL("DROP TABLE `longitudinal_followups`")
+                db.execSQL("ALTER TABLE `longitudinal_followups_new` RENAME TO `longitudinal_followups`")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_longitudinal_followups_studyId_followupRound` ON `longitudinal_followups` (`studyId`, `followupRound`)")
+            }
+        }
+
+        fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                // Initialize database and enforce PRAGMA foreign_keys = ON via fallbackToDestructiveMigration if needed 
-                // Note: Room enables foreign keys by default on standard configurations, 
-                // but setting a specific callback can verify or explicitly execute.
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "sam_tracking_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
                 INSTANCE = instance
                 instance

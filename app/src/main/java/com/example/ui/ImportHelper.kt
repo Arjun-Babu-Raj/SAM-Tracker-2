@@ -83,47 +83,56 @@ suspend fun importDataFromCsvImpl(
     context: Context,
     uri: Uri,
     repository: SamRepository
-) = withContext(Dispatchers.IO) {
+): Pair<Int, Int> = withContext(Dispatchers.IO) {
     try {
         val inputStream = context.contentResolver.openInputStream(uri) 
             ?: throw IllegalStateException("Unable to open input stream for CSV")
         val reader = BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8))
         
         val allRecords = parseCsvRecords(reader)
-        if (allRecords.isEmpty()) return@withContext
+        if (allRecords.isEmpty()) return@withContext Pair(0, 0)
         val headers = allRecords[0].map { it.trim() }
         
         val bFields = QuestionBank.baselineSections.flatMap { it.fields }.filter { it !is FormField.Subheading }.map { it.id }
         val fFields = QuestionBank.followupSections.flatMap { it.fields }.filter { it !is FormField.Subheading }.map { it.id }
         val rounds = listOf("M9", "M12", "M15")
 
-        for (i in 1 until allRecords.size) {
-            val cols = allRecords[i]
-            if (cols.size < 6) continue
+        var importedCount = 0
+        var skippedCount = 0
 
-            val getCol = { headerStart: String -> 
-                val idx = headers.indexOfFirst { it.equals(headerStart, ignoreCase = true) }
-                if (idx != -1 && idx < cols.size) cols[idx] else ""
-            }
+        repository.runInTransaction {
+            for (i in 1 until allRecords.size) {
+                val cols = allRecords[i]
+                if (cols.size < 6) continue
 
-            val studyId = getCol("StudyID")
-            val csamId = getCol("CSAM_ID")
-            val childName = getCol("ChildName")
-            val sex = getCol("Sex")
-            val awcName = getCol("AWC")
-            val sector = getCol("Sector")
+                val getCol = { headerStart: String -> 
+                    val idx = headers.indexOfFirst { it.equals(headerStart, ignoreCase = true) }
+                    if (idx != -1 && idx < cols.size) cols[idx] else ""
+                }
 
-            val hhId = getCol("HouseholdID").takeIf { it.isNotBlank() } ?: studyId
-            val fType = getCol("FamilyType")
-            val fMembers = getCol("FamilyMembers").toIntOrNull() ?: 0
-            val mIncome = getCol("MonthlyIncome").toDoubleOrNull() ?: 0.0
+                val studyId = getCol("StudyID").trim()
+                val csamId = getCol("CSAM_ID").trim()
+                val childName = getCol("ChildName")
+                val sex = getCol("Sex")
+                val awcName = getCol("AWC")
+                val sector = getCol("Sector")
 
-            if (studyId.isNotBlank()) {
+                val hhId = getCol("HouseholdID").trim().takeIf { it.isNotBlank() } ?: studyId
+                val fType = getCol("FamilyType")
+                val fMembers = getCol("FamilyMembers").toIntOrNull() ?: 0
+                val mIncome = getCol("MonthlyIncome").toDoubleOrNull() ?: 0.0
+
+                if (studyId.isBlank() || csamId.isBlank()) {
+                    skippedCount++
+                    continue
+                }
+
                 val hh = Household(hhId, fType, fMembers, mIncome)
                 repository.insertHousehold(hh)
 
                 val ch = Child(studyId, csamId, hhId, childName, sex, awcName, sector)
                 repository.insertChild(ch)
+                importedCount++
 
                 // Baseline Assessment Check
                 val bOutcome = getCol("Baseline_Outcome")
@@ -185,6 +194,7 @@ suspend fun importDataFromCsvImpl(
                 }
             }
         }
+        Pair(importedCount, skippedCount)
     } catch (e: Exception) {
         e.printStackTrace()
         throw e

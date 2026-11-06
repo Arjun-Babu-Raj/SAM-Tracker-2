@@ -15,7 +15,10 @@ import androidx.compose.ui.Alignment
 
 @Composable
 fun BaselineScreen(studyId: String? = null, draftId: String? = null, viewModel: MainViewModel, onNavigateBack: () -> Unit) {
-    var dynamicAnswers by remember { mutableStateOf(mapOf<String, String>()) }
+    val isEditMode = !studyId.isNullOrEmpty()
+    var dynamicAnswers by remember {
+        mutableStateOf<Map<String, String>>(if (studyId != null && studyId.isNotEmpty()) mapOf("study_id" to studyId) else emptyMap())
+    }
     var isHindi by remember { mutableStateOf(false) }
     val formState by viewModel.baselineState.collectAsState()
     LaunchedEffect(studyId, draftId) {
@@ -28,14 +31,21 @@ fun BaselineScreen(studyId: String? = null, draftId: String? = null, viewModel: 
             val childData = viewModel.getChildProfileDataOnce(studyId)
             if (childData != null) {
                 val (child, baseline, _) = childData
+                val map = mutableMapOf<String, String>()
                 if (baseline != null) {
                     try {
                         val json = JSONObject(baseline.extraDataJson)
-                        val map = mutableMapOf<String, String>()
                         json.keys().forEach { key -> map[key] = json.getString(key) }
-                        dynamicAnswers = map
                     } catch (e: Exception) { e.printStackTrace() }
                 }
+                map["study_id"] = child.studyId
+                if (map["csam_id"].isNullOrBlank()) map["csam_id"] = child.csamId
+                if (map["household_id"].isNullOrBlank()) map["household_id"] = child.householdId
+                if (map["child_name"].isNullOrBlank()) map["child_name"] = child.childName
+                if (map["sex"].isNullOrBlank()) map["sex"] = child.sex
+                if (map["awc_name"].isNullOrBlank()) map["awc_name"] = child.awcName
+                if (map["block_district"].isNullOrBlank()) map["block_district"] = child.sectorBlockDistrict
+                dynamicAnswers = map
             }
         }
     }
@@ -88,14 +98,17 @@ fun BaselineScreen(studyId: String? = null, draftId: String? = null, viewModel: 
                     sections = QuestionBank.baselineSections,
                     answers = dynamicAnswers,
                     onAnswerChange = { id, value ->
-                        dynamicAnswers = dynamicAnswers.toMutableMap().apply { put(id, value) }
+                        if (!(isEditMode && id == "study_id")) {
+                            dynamicAnswers = dynamicAnswers.toMutableMap().apply { put(id, value) }
+                        }
                     },
-                    isHindi = isHindi
+                    isHindi = isHindi,
+                    readOnlyFields = if (isEditMode) setOf("study_id") else emptySet()
                 )
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Button(
                         onClick = {
                             viewModel.saveDraft("baseline", dynamicAnswers, draftId)
@@ -108,8 +121,8 @@ fun BaselineScreen(studyId: String? = null, draftId: String? = null, viewModel: 
                     }
                     Button(
                         onClick = {
-                            val studyId = dynamicAnswers["study_id"] ?: ""
-                            val householdId = dynamicAnswers["household_id"]?.takeIf { it.isNotBlank() } ?: studyId
+                            val targetStudyId = if (isEditMode) studyId!! else (dynamicAnswers["study_id"] ?: "")
+                            val householdId = dynamicAnswers["household_id"]?.takeIf { it.isNotBlank() } ?: targetStudyId
                             val familyType = dynamicAnswers["family_type"] ?: ""
                             val totalMembers = dynamicAnswers["total_members"]?.toIntOrNull() ?: 0
                             val monthlyIncome = dynamicAnswers["monthly_income"]?.toDoubleOrNull() ?: 0.0
@@ -120,21 +133,21 @@ fun BaselineScreen(studyId: String? = null, draftId: String? = null, viewModel: 
                             val sex = dynamicAnswers["sex"] ?: ""
                             val awcName = dynamicAnswers["awc_name"] ?: ""
                             val blockDistrict = dynamicAnswers["block_district"] ?: ""
-                            val ch = Child(studyId, csamId, householdId, childName, sex, awcName, blockDistrict)
+                            val ch = Child(targetStudyId, csamId, householdId, childName, sex, awcName, blockDistrict)
                             
-                            val extraJson = JSONObject(dynamicAnswers).toString()
+                            val answersWithStudyId = dynamicAnswers.toMutableMap().apply { put("study_id", targetStudyId) }
+                            val extraJson = JSONObject(answersWithStudyId).toString()
                             val bs = BaselineAssessment(
-                                studyId = studyId,
+                                studyId = targetStudyId,
                                 programmeOutcome = dynamicAnswers["programme_outcome"] ?: "",
                                 thrReceivedTreatment = dynamicAnswers["snp_provided"] ?: "",
                                 thrConsumedDays7d = dynamicAnswers["snp_days"]?.toIntOrNull() ?: 0,
                                 extraDataJson = extraJson
                             )
-                            val isEdit = !studyId.isNullOrEmpty()
-                            viewModel.submitBaseline(hl, ch, bs, isEditMode = isEdit, draftIdToDelete = draftId)
+                            viewModel.submitBaseline(hl, ch, bs, isEditMode = isEditMode, draftIdToDelete = draftId)
                         },
                         modifier = Modifier.weight(1f).height(56.dp).testTag("btn_save_baseline"),
-                        enabled = formState != FormState.Loading && dynamicAnswers["study_id"].isNullOrBlank().not()
+                        enabled = formState != FormState.Loading && (isEditMode || dynamicAnswers["study_id"].isNullOrBlank().not())
                     ) {
                         if (formState is FormState.Loading) {
                             CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
